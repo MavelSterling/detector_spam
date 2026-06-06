@@ -2,7 +2,7 @@
 
 Spam Mail Detector is a Python web application that classifies SMS, email subjects, or short messages as `SPAM` or `NOSPAM`.
 
-The project uses the Hugging Face model [`Goodmotion/spam-mail-classifier`](https://huggingface.co/Goodmotion/spam-mail-classifier), a multilingual text-classification model fine-tuned from `microsoft/Multilingual-MiniLM-L12-H384` for spam detection. It also includes utilities to download and inspect the UCI [`SMS Spam Collection`](https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip).
+The project uses the Hugging Face model [`Goodmotion/spam-mail-classifier`](https://huggingface.co/Goodmotion/spam-mail-classifier), a multilingual text-classification model fine-tuned from `microsoft/Multilingual-MiniLM-L12-H384` for spam detection. It also inspects the UCI [`SMS Spam Collection`](https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip) dataset when the file is available locally.
 
 ## Project Structure
 
@@ -14,7 +14,10 @@ detector_spam/
 |   |-- fastapi_app.py
 |   |-- model.py
 |   `-- streamlit_app.py
+|-- data/
+|   `-- SMSSpamCollection
 |-- notebook/
+|   |-- requirements.txt
 |   `-- spam_mail_classifier_process.ipynb
 |-- README.md
 `-- requirements.txt
@@ -31,7 +34,8 @@ detector_spam/
 - Shows the predicted label and confidence score.
 - Uses a pretrained Transformer model from Hugging Face.
 - Exposes a FastAPI service with prediction and dataset endpoints.
-- Downloads the UCI SMS Spam Collection on demand for dataset summaries and samples.
+- Reads the local UCI SMS Spam Collection file for dataset summaries, charts, samples, and model evaluation.
+- Keeps notebook-only dependencies outside the Docker runtime requirements.
 
 ## Installation
 
@@ -73,7 +77,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The dataset and Hugging Face model are downloaded on demand the first time the app needs them.
+5. Make sure the dataset file exists at:
+
+```text
+data/SMSSpamCollection
+```
+
+To run the notebook, install its additional dependencies from the notebook folder:
+
+```powershell
+pip install -r notebook/requirements.txt
+```
+
+The Hugging Face model is downloaded on demand the first time the app needs it. The dataset is not downloaded by the app; it must be present in `data/SMSSpamCollection`.
 
 ## Run The Web App
 
@@ -110,6 +126,8 @@ Then open:
 
 ## Run With Docker
 
+The Docker image installs the app dependencies from the root `requirements.txt`. PyTorch is pinned to the CPU wheel with `torch==2.5.1+cpu` to avoid installing GPU/CUDA packages.
+
 Build the image:
 
 ```bash
@@ -126,11 +144,7 @@ Then open:
 
 - Streamlit app: http://localhost:8501
 
-To persist the downloaded dataset and Hugging Face model cache between container runs:
-
-```bash
-docker run --rm -p 8501:8501 -v detector-spam-cache:/app/.cache -v detector-spam-data:/app/data detector-spam
-```
+The dataset file is copied into the image because it is small. The Hugging Face model is still downloaded on demand the first time the container needs it.
 
 ## FastAPI Endpoints
 

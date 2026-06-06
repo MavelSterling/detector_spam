@@ -66,6 +66,26 @@ def prediction_badge(label: str) -> str:
     return "SPAM" if label == "SPAM" else "NOSPAM"
 
 
+def default_chat_messages() -> list[dict[str, object]]:
+    return [
+        {
+            "role": "assistant",
+            "content": "Listo para clasificar mensajes como SPAM o NOSPAM.",
+        }
+    ]
+
+
+def clear_chat_history() -> None:
+    st.session_state.messages = default_chat_messages()
+
+
+def render_chat_message(message: dict[str, object]) -> None:
+    with st.chat_message(str(message["role"])):
+        st.write(message["content"])
+        if "confidence" in message:
+            st.progress(float(message["confidence"]))
+
+
 with tab_eda:
     st.subheader("SMS Spam Collection de UCI")
     st.caption(DATASET_SOURCE)
@@ -156,10 +176,10 @@ with tab_evaluation:
     with controls_left:
         evaluation_limit = st.slider(
             "Cantidad de mensajes para evaluar",
-            min_value=50,
+            min_value=15,
             max_value=min(1000, summary["rows"]),
             value=300,
-            step=50,
+            step=5,
         )
     with controls_right:
         run_evaluation = st.button("Evaluar modelo", type="primary", use_container_width=True)
@@ -258,39 +278,50 @@ with tab_chat:
     st.caption("Escribe un mensaje y el sistema respondera con la prediccion generada por el modelo.")
 
     if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {
-                "role": "assistant",
-                "content": "Listo para clasificar mensajes como SPAM o NOSPAM.",
-            }
-        ]
+        st.session_state.messages = default_chat_messages()
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+    render_chat_message(st.session_state.messages[0])
+
+    has_chat_history = len(st.session_state.messages) > 1
+    if has_chat_history:
+        st.button(
+            "Nueva consulta y limpiar historial",
+            help="Reinicia el chat para clasificar otro mensaje desde cero.",
+            on_click=clear_chat_history,
+        )
+    else:
+        st.markdown("<div style='height: 40px'></div>", unsafe_allow_html=True)
 
     prompt = st.chat_input("Escribe aqui el mensaje a clasificar")
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
+        with st.spinner("Clasificando..."):
+            result = classify_text(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner("Clasificando..."):
-                result = classify_text(prompt)
+        if result is None:
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": "No pude clasificar un mensaje vacio. Escribe un texto para analizar.",
+                }
+            )
+        else:
+            scores = result["scores"]
+            response = (
+                f"Prediccion: **{prediction_badge(result['label'])}**\n\n"
+                f"Confianza: **{result['confidence']:.2%}**\n\n"
+                f"Scores: NOSPAM {scores.get('NOSPAM', 0):.2%} | "
+                f"SPAM {scores.get('SPAM', 0):.2%}"
+            )
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": response,
+                    "confidence": result["confidence"],
+                }
+            )
 
-            if result is None:
-                response = "No pude clasificar un mensaje vacio. Escribe un texto para analizar."
-                st.warning(response)
-            else:
-                scores = result["scores"]
-                response = (
-                    f"Prediccion: **{prediction_badge(result['label'])}**\n\n"
-                    f"Confianza: **{result['confidence']:.2%}**\n\n"
-                    f"Scores: NOSPAM {scores.get('NOSPAM', 0):.2%} | "
-                    f"SPAM {scores.get('SPAM', 0):.2%}"
-                )
-                st.markdown(response)
-                st.progress(result["confidence"])
+        st.rerun()
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
+    for message in st.session_state.messages[1:]:
+        render_chat_message(message)
